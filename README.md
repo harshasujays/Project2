@@ -68,13 +68,13 @@ java Main
 ## Screenshots
 
 
-![screenshot1](screenshots/1.png)
+![screenshot1](Screenshots/2.png)
 
 
-![screenshot2](screenshots/2.png)
+![screenshot2](Screenshots/3.png)
 
 
-![screenshot3](screenshots/3.png)
+![screenshot3](Screenshots/1.png)
 
 ---
 
