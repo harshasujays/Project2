@@ -1,8 +1,6 @@
 import java.util.ArrayList;
 import java.util.InputMismatchException;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Scanner;
 
 class SubjectTemplate {
@@ -46,12 +44,14 @@ class SubjectResult {
     }
 
     boolean hasPassed() {
-        // If subject has internals, need both thresholds
+        // If subject has internals, need both thresholds (40% of written, 35% of internal)
         if (internalMax > 0) {
-            if (writtenObtained < 40) {
+            double writtenPercent = writtenMax > 0 ? (100.0 * writtenObtained) / writtenMax : 0;
+            double internalPercent = internalMax > 0 ? (100.0 * internalObtained) / internalMax : 0;
+            if (writtenPercent < 40) {
                 return false;
             }
-            if (internalObtained < 35) {
+            if (internalPercent < 35) {
                 return false;
             }
             return true;
@@ -110,77 +110,7 @@ class SubjectResult {
     }
 }
 
-class SubjectGrade {
-    String name;
-    int credit;
-    String grade;
 
-    SubjectGrade(String name, int credit, String grade) {
-        this.name = name;
-        this.credit = credit;
-        this.grade = grade.toUpperCase();
-    }
-
-    double getGradePoint() {
-        return switch (grade) {
-            case "S" -> 10.0;
-            case "A+" -> 9.0;
-            case "A" -> 8.5;
-            case "B+" -> 8.0;
-            case "B" -> 7.5;
-            case "C+" -> 7.0;
-            case "C" -> 6.5;
-            case "D" -> 6.0;
-            case "P" -> 5.5;
-            default -> 0.0;
-        };
-    }
-
-    @Override
-    public String toString() {
-        return String.format("%s (%dcr): grade=%s, GP=%.1f", name, credit, grade, getGradePoint());
-    }
-}
-
-class GradeSemesterRecord {
-    SemesterScheme scheme;
-    List<SubjectGrade> grades;
-
-    GradeSemesterRecord(SemesterScheme scheme, List<SubjectGrade> grades) {
-        this.scheme = scheme;
-        this.grades = grades;
-    }
-
-    double calculateSGPA() {
-        double totalCredits = 0;
-        double weightedPoints = 0;
-        for (SubjectGrade grade : grades) {
-            if (grade.credit > 0 && !grade.grade.equals("F")) {
-                totalCredits += grade.credit;
-                weightedPoints += grade.credit * grade.getGradePoint();
-            }
-        }
-        return totalCredits > 0 ? weightedPoints / totalCredits : 0;
-    }
-
-    int getTotalSemesterCredits() {
-        int total = 0;
-        for (SubjectGrade grade : grades) {
-            total += grade.credit;
-        }
-        return total;
-    }
-
-    int getEarnedCredits() {
-        int earned = 0;
-        for (SubjectGrade grade : grades) {
-            if (grade.credit > 0 && !grade.grade.equals("F")) {
-                earned += grade.credit;
-            }
-        }
-        return earned;
-    }
-}
 
 class SemesterScheme {
     String name;
@@ -205,7 +135,8 @@ class SemesterRecord {
         double totalCredits = 0;
         double weightedPoints = 0;
         for (SubjectResult result : results) {
-            if (result.credit > 0) {
+            // Only include subjects with credit and that have passed
+            if (result.credit > 0 && result.hasPassed()) {
                 totalCredits += result.credit;
                 weightedPoints += result.credit * result.getGradePoint();
             }
@@ -260,7 +191,8 @@ class Student {
         double totalWeightedPoints = 0;
         for (SemesterRecord record : semesters) {
             for (SubjectResult result : record.results) {
-                if (result.credit > 0) {
+                // Only include subjects with credit and that have passed
+                if (result.credit > 0 && result.hasPassed()) {
                     totalCredits += result.credit;
                     totalWeightedPoints += result.credit * result.getGradePoint();
                 }
@@ -451,25 +383,59 @@ public class Main {
             println("This student already has records for " + scheme.name + ". Use a different scheme or delete the old record.");
             return;
         }
-        List<SubjectGrade> grades = new ArrayList<>();
+        List<SubjectResult> results = new ArrayList<>();
         println("Valid grades: S, A+, A, B+, B, C+, C, D, P, F");
         for (SubjectTemplate template : scheme.subjects) {
             String gradeInput = readString("\nEnter grade for " + template.name + " (" + template.credit + " credits): ");
-            grades.add(new SubjectGrade(template.name, template.credit, gradeInput));
+            double gp = gradeToGradePoint(gradeInput.toUpperCase());
+            // Create SubjectResult with marks derived from grade point
+            int marks = gradePointToMarks(gp, template.writtenMax + template.internalMax);
+            results.add(new SubjectResult(template.name, template.credit, marks, 100, 0, 0));
         }
-        GradeSemesterRecord gradeRecord = new GradeSemesterRecord(scheme, grades);
-        double sgpa = gradeRecord.calculateSGPA();
+        SemesterRecord record = new SemesterRecord(scheme, results);
+        student.addSemesterRecord(record);
+        double sgpa = record.calculateSGPA();
         println("\n========== SGPA CALCULATION ==========");
         println("Semester: " + scheme.name);
         println("Student: " + student.name + " (Roll " + student.rollNo + ")");
-        println("Total credits: " + gradeRecord.getTotalSemesterCredits());
-        println("Earned credits: " + gradeRecord.getEarnedCredits());
+        println("Total credits: " + record.getTotalSemesterCredits());
+        println("Earned credits: " + record.getEarnedCredits());
         println("SGPA: " + String.format("%.2f", sgpa));
         println("Subject details:");
-        for (SubjectGrade grade : grades) {
-            println("  - " + grade);
+        for (SubjectResult result : results) {
+            println("  - " + result);
         }
         println("====================================");
+    }
+
+    private static double gradeToGradePoint(String grade) {
+        return switch (grade) {
+            case "S" -> 10.0;
+            case "A+" -> 9.0;
+            case "A" -> 8.5;
+            case "B+" -> 8.0;
+            case "B" -> 7.5;
+            case "C+" -> 7.0;
+            case "C" -> 6.5;
+            case "D" -> 6.0;
+            case "P" -> 5.5;
+            case "F" -> 0.0;
+            default -> 0.0;
+        };
+    }
+
+    private static int gradePointToMarks(double gp, int totalMax) {
+        if (gp == 0.0) return 0;
+        if (gp == 10.0) return (int)(totalMax * 0.95);
+        if (gp == 9.0) return (int)(totalMax * 0.87);
+        if (gp == 8.5) return (int)(totalMax * 0.80);
+        if (gp == 8.0) return (int)(totalMax * 0.75);
+        if (gp == 7.5) return (int)(totalMax * 0.70);
+        if (gp == 7.0) return (int)(totalMax * 0.65);
+        if (gp == 6.5) return (int)(totalMax * 0.60);
+        if (gp == 6.0) return (int)(totalMax * 0.55);
+        if (gp == 5.5) return (int)(totalMax * 0.50);
+        return 0;
     }
 
     private static void findSGPA() {
